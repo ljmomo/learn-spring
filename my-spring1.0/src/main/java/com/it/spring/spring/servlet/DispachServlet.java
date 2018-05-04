@@ -128,8 +128,10 @@ public class DispachServlet extends HttpServlet {
                     Object instance = aClass.newInstance();
                     beanMap.put(beanName, instance);
 
+                    System.out.println("doRegistry aClass: "+ aClass.getName());
                     Class<?>[] interfaces = aClass.getInterfaces();
                     for (Class<?> i : interfaces) {
+                        System.out.println("doRegistry  i:"+i.getName());
                         beanMap.put(i.getName(), instance);
                     }
 
