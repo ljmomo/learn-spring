@@ -3,6 +3,7 @@ package com.it.spring.framework.context;
 import com.it.spring.framework.annotation.Autowried;
 import com.it.spring.framework.annotation.Controller;
 import com.it.spring.framework.annotation.Service;
+import com.it.spring.framework.aop.AopConfig;
 import com.it.spring.framework.beans.BeanDefinition;
 import com.it.spring.framework.beans.BeanPostProcessor;
 import com.it.spring.framework.beans.BeanWrapper;
@@ -10,17 +11,20 @@ import com.it.spring.framework.context.support.BeanDefinitionReader;
 import com.it.spring.framework.core.BeanFactory;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author lijun
  * @since 2018-04-23 15:04
  */
-public class ApplicationContext implements BeanFactory {
+public class ApplicationContext extends DefaultListableBeanFactory implements BeanFactory {
 
     /**
      * 配置文件
@@ -34,7 +38,7 @@ public class ApplicationContext implements BeanFactory {
     /**
      * beanDefinitionMap用来保存配置信息
      */
-    private Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<String, BeanDefinition>();
+    //private Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<String, BeanDefinition>();
 
 
     /**
@@ -49,7 +53,6 @@ public class ApplicationContext implements BeanFactory {
     private Map<String, BeanWrapper> beanWrapperMap = new ConcurrentHashMap<String, BeanWrapper>();
 
     public ApplicationContext(String... configLocations) {
-        this.configLocations = configLocations;
         this.configLocations = configLocations;
         refresh();
     }
@@ -77,12 +80,12 @@ public class ApplicationContext implements BeanFactory {
         for (Map.Entry<String, BeanDefinition> beanDefinitionEntry : this.beanDefinitionMap.entrySet()) {
             String beanName = beanDefinitionEntry.getKey();
             if (!beanDefinitionEntry.getValue().isLazyInit()) {
-                getBean(beanName);
+              Object  object =   getBean(beanName);
             }
         }
 
         for(Map.Entry<String,BeanWrapper> beanWrapperEntry : this.beanWrapperMap.entrySet()){
-            populateBean(beanWrapperEntry.getKey(),beanWrapperEntry.getValue().getWrappedInstance());
+            populateBean(beanWrapperEntry.getKey(),beanWrapperEntry.getValue().getOriginalInstance());
 
         }
 
@@ -189,6 +192,11 @@ public class ApplicationContext implements BeanFactory {
         beanPostProcessor.postProcessBeforeInitialization(instance, beanName);
 
         BeanWrapper beanWrapper = new BeanWrapper(instance);
+        try {
+            beanWrapper.setAopConfig(instantionAopConfig(beanDefinition));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         beanWrapper.setPostProcessor(beanPostProcessor);
         this.beanWrapperMap.put(beanName, beanWrapper);
 
@@ -231,5 +239,35 @@ public class ApplicationContext implements BeanFactory {
 
     public Properties getConfig(){
         return this.reader.getConfig();
+    }
+
+
+    private AopConfig instantionAopConfig(BeanDefinition beanDefinition) throws  Exception{
+        AopConfig config = new AopConfig();
+        String expression = reader.getConfig().getProperty("pointCut");
+        String[] before = reader.getConfig().getProperty("aspectBefore").split("\\s");
+        String[] after = reader.getConfig().getProperty("aspectAfter").split("\\s");
+
+        String className = beanDefinition.getBeanClassName();
+        Class<?> clazz = Class.forName(className);
+
+        Pattern pattern = Pattern.compile(expression);
+
+        Class aspectClass = Class.forName(before[0]);
+        //在这里得到的方法都是原生的方法
+        for (Method m : clazz.getMethods()){
+
+            //public .* com\.gupaoedu\.vip\.spring\.demo\.service\..*Service\..*\(.*\)
+            //public java.lang.String com.gupaoedu.vip.spring.demo.service.impl.ModifyService.add(java.lang.String,java.lang.String)
+            Matcher matcher = pattern.matcher(m.toString());
+            if(matcher.matches()){
+                //能满足切面规则的类，添加的AOP配置中
+                config.put(m,aspectClass.newInstance(),new Method[]{aspectClass.getMethod(before[1]),aspectClass.getMethod(after[1])});
+            }
+        }
+
+
+
+        return  config;
     }
 }
